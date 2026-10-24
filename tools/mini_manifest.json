@@ -1,0 +1,10 @@
+{
+  "_note": "Plan 5 (Phase 38). Each script lists its games in Appendix B order. Sources: work_src/<folder>/<id>.js. Built by tools/build_mini.py <script>.",
+  "f1": {"title": "Level I full games (the Stormcliffs)", "budget": 70, "kind": "full", "games": ["leap", "doors"]},
+  "f2": {"title": "Level II full game (the Marble Coast)", "budget": 40, "kind": "full", "games": ["garden"]},
+  "f3": {"title": "Level III full game (the Misty Valleys)", "budget": 40, "kind": "full", "games": ["shared"]},
+  "s1": {"title": "Level I short games (the Stormcliffs)", "budget": 115, "kind": "short", "games": ["voices", "crowd", "tornpage", "oncemore", "absurd", "excuses", "medal", "becoming", "rosary", "rose", "zenletter"]},
+  "s2": {"title": "Level II short games (the Marble Coast)", "budget": 125, "kind": "short", "games": ["hemlock", "cloak", "waxtablet", "peripatos", "gate", "cure", "letters", "sealring", "chain", "crutch", "morning", "danube"]},
+  "s3": {"title": "Level III short games (the Misty Valleys)", "budget": 105, "kind": "short", "games": ["bodhi", "alms", "slips", "buffalo", "ding", "claypot", "analects", "zither", "sitting", "sandal"]},
+  "s4": {"title": "Level IV short games (the Clockwork City)", "budget": 85, "kind": "short", "games": ["summa", "ox", "kantwalk", "citymap", "poems", "petition", "different", "tellmore"]}
+}
