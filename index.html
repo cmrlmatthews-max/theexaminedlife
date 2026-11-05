@@ -310,6 +310,9 @@ h1,h2,h3,.px{font-family:var(--f-head);font-weight:400;letter-spacing:.02em}
 .pill.glow{box-shadow:0 0 0 1.5px var(--lead),0 0 16px rgba(245,198,106,.85)}
 #mFrame{position:absolute;left:50%;transform:translateX(-50%);top:calc(52px + env(safe-area-inset-top,0px));padding:3px;line-height:0;border-radius:6px;background:var(--band);box-shadow:0 0 0 1.5px var(--lead),0 10px 30px rgba(0,0,0,.55)}
 #mcv{display:block;image-rendering:pixelated;image-rendering:crisp-edges;background:#0E0B1A;border-radius:3px}
+/* Plan 6: a painted game (engine "paint") draws full screen with PixiJS on #mpx; the old canvas and plate hide */
+#mpx{display:none}#mini.paint #mFrame{top:0;bottom:0;left:0;right:0;transform:none;padding:0;border-radius:0;background:none;box-shadow:none;display:flex;align-items:center;justify-content:center}
+#mini.paint #mcv,#mini.paint #mPlate{display:none}#mini.paint #mpx{display:block;touch-action:none}
 #mPlate{position:absolute;left:3px;top:3px;right:3px;bottom:3px;width:calc(100% - 6px);height:calc(100% - 6px);object-fit:cover;border-radius:3px;opacity:0;pointer-events:none;transform-origin:50% 35%}
 #mPlate.on{animation:mplatein 7s ease-out forwards}
 @keyframes mplatein{from{transform:scale(1)}to{transform:scale(1.045)}}
@@ -2841,8 +2844,8 @@ const LANTERN_SVG=`<svg viewBox="0 0 12 16" aria-hidden="true" shape-rendering="
 const LANTERN_WORDS=["Your lantern is lit.","The lantern burns brighter.","The lantern burns its brightest."];
 function lanternRow(n,cls){return `<span class="mlan ${cls||""}">${[0,1,2].map(i=>LANTERN_SVG.replace("<svg",`<svg class="${i<n?"on":""}"`)).join("")}<span class="sr">${n} of 3 lanterns</span></span>`}
 /* Phase 38: a thinker's games in load order (full games first, then short games) */
-const gamesOf=who=>Object.keys(MINI).filter(g=>MINI[g].who===who&&!MINI[g].boss);
-function miniTotals(){const ids=Object.keys(MINI).filter(id=>!MINI[id].nofl);return {got:ids.reduce((n,id)=>n+((P.g[id]&&P.g[id].fl)||0),0),of:ids.length*3}}
+const gamesOf=who=>Object.keys(MINI).filter(g=>MINI[g].who===who&&!MINI[g].boss&&!MINI[g].hidden);
+function miniTotals(){const ids=Object.keys(MINI).filter(id=>!MINI[id].nofl&&!MINI[id].hidden);return {got:ids.reduce((n,id)=>n+((P.g[id]&&P.g[id].fl)||0),0),of:ids.length*3}}
 const artLabel=a=>isFound(a)?"Look again":(a.g&&MINI[a.g]?"Play":"Examine");
 /* Art helpers: draw on a mini canvas from the land atlases. Each returns false until the image has loaded, so games can draw a simple shape instead. */
 function mTile(c,land,name,x,y){const e=ATLAS_IMG[land],A=ATLAS[land];if(!e||!e.ok||!A)return false;const p=A.tiles[name];if(!p)return false;const T=A.tile||16;c.drawImage(e.img,p[0]*T,p[1]*T,T,T,Math.round(x),Math.round(y),16,16);return true}
@@ -2871,18 +2874,21 @@ function miniSay(txt,delay,who){ /* who (Phase 33C): another speaker's name for 
   miniSay.t=setTimeout(()=>{if(!MS||MS.mode!=="play")return;el.querySelector("b").textContent=who||speakerName(MS.g.who);el.querySelector("span").textContent=txt;void el.offsetWidth;el.classList.remove("hide");voSay(txt,MS.g.who);clearTimeout(miniSay.h);miniSay.h=setTimeout(()=>el.classList.add("hide"),4500)},delay||0)}
 function miniSayClear(){clearTimeout(miniSay.t);clearTimeout(miniSay.h);voStop();const el=$("#mSay");if(el)el.classList.add("hide")}
 /* A game calls stageUp(s) to move to its next stage (or stageUp(s,n) to jump). Safe to call from tests, where no stage is open. */
-function stageUp(s,n){s.st=n==null?(s.st||0)+1:n;s.stT=0;if(!MS||MS.s!==s)return;const g=MS.g;MS.sess.st=Math.max(MS.sess.st||0,s.st);
+function stageUp(s,n){const was=s.st||0;s.st=n==null?(s.st||0)+1:n;s.stT=0;if(!MS||MS.s!==s)return;const g=MS.g;if(MS.paint&&MS.mode==="play")for(let i=was;i<s.st;i++)paintAward(i); /* Plan 6: each cleared stage gives its artifact */MS.sess.st=Math.max(MS.sess.st||0,s.st);
   const nm=(g.stages||[])[s.st];if(nm&&MS.mode==="play"){miniBanner(stageLabel(g,s.st));sfx("stage");if(g.lines&&g.lines[s.st])miniSay(g.lines[s.st],1500)}miniPips()}
 
 
 /* ---- The stage ---- */
-function fitMini(){const dpr=devicePixelRatio||1,k=Math.max(1,Math.floor(Math.min((innerWidth-6)*dpr/192,(innerHeight-120)*dpr/320))),c=$("#mcv");c.style.width=(192*k/dpr)+"px";c.style.height=(320*k/dpr)+"px"}
+function fitMini(){if(MS&&MS.paint&&window.PAINT&&PAINT.app){const k=Math.min(innerWidth/360,innerHeight/780),c=PAINT.app.canvas;c.style.width=(360*k)+"px";c.style.height=(780*k)+"px";return}const dpr=devicePixelRatio||1,k=Math.max(1,Math.floor(Math.min((innerWidth-6)*dpr/192,(innerHeight-120)*dpr/320))),c=$("#mcv");c.style.width=(192*k/dpr)+"px";c.style.height=(320*k/dpr)+"px"}
 addEventListener("resize",()=>{if(screen==="mini")fitMini()});
-function newMiniState(g,o){const s={W:192,H:320,rm:RM.matches,t:0};if(o)Object.assign(s,o);g.init(s);return s} /* Phase 36: o={retry:1} marks a Try again, so a game can keep what earlier stages earned */
+function newMiniState(g,o){const pg=g.engine==="paint",s={W:pg?360:192,H:pg?780:320,rm:RM.matches,t:0};if(o)Object.assign(s,o);
+  const live=pg&&window.PAINT&&PAINT.app&&PAINT_OPEN&&MINI[PAINT_OPEN]===g;if(live)PAINT.fresh();g.init(s);if(live&&g.build)g.build(s);return s} /* Plan 6: a painted game gets new display layers and builds its scene for each new state */ /* Phase 36: o={retry:1} marks a Try again, so a game can keep what earlier stages earned */
 function startMini(id,opt){opt=opt||{};const g=MINI[id];if(!g)return;
+  if(g.engine==="paint"&&PAINT_OPEN!==id){paintOpen(id,opt);return} /* Plan 6: load the engine, the game file, and its art first */
   loadAtlas(g.land);loadAtlas("chars");input.dx=input.dy=0;input.keys={};if(signState)closeSign();miniClearInput();
   const sess=g.boss?(MSESS[id]={tries:0,t:0}):(MSESS[id]||(MSESS[id]={tries:0,t:0}));
-  MS={id,g,t0:performance.now(),boss:!!g.boss,art:g.boss?null:(opt.art||null),replay:!!opt.replay,mode:"setup",i:0,s:newMiniState(g),bk:0,res:null,sess,inp:miniBlankInp(),prev:null,auto:false};
+  MS={id,g,t0:performance.now(),boss:!!g.boss,art:g.boss?null:(opt.art||null),replay:!!opt.replay,mode:"setup",i:0,s:null,bk:0,res:null,sess,inp:miniBlankInp(),prev:null,auto:false,paint:g.engine==="paint",dt:0};MS.s=newMiniState(g);
+  $("#mini").classList.toggle("paint",MS.paint);if(MS.paint)paintStartStage();
   if(!MCTX){MCTX=$("#mcv").getContext("2d")}MCTX.imageSmoothingEnabled=false;
   loadMiniArt(id);miniPlateReset();$("#mBanner").classList.add("hide");$("#mTitle").textContent=g.title;$("#mini").style.setProperty("--lc",(LEVEL_DEFS[g.land]&&LEVEL_DEFS[g.land].accent)||"var(--l1)");
   $("#mpad").classList.toggle("hide",!g.pad);$("#mab").classList.toggle("hide",!g.ab);$("#mPause").classList.remove("glow");
@@ -2891,12 +2897,12 @@ function startMini(id,opt){opt=opt||{};const g=MINI[id];if(!g)return;
 function startMiniLoop(){cancelAnimationFrame(mraf);mlast=performance.now();mraf=requestAnimationFrame(miniLoop)}
 function stopMiniLoop(){cancelAnimationFrame(mraf)}
 function miniLoop(ts){const dt=Math.min(.05,Math.max(0,(ts-mlast)/1000));mlast=ts;try{miniTick(dt)}catch(e){console.error(e)}if(screen==="mini")mraf=requestAnimationFrame(miniLoop)}
-function miniTick(dt){if(!MS)return;const g=MS.g,s=MS.s;s.rm=RM.matches;
+function miniTick(dt){if(!MS)return;const g=MS.g,s=MS.s;s.rm=RM.matches;MS.dt=dt;
   if(MS.mode==="play"){const inp=miniInput();if(MS.auto)g.auto(s,inp);MS.inp=inp;s.t+=dt;MS.sess.t+=dt;const r=g.step(s,dt,inp);
     if(r==="win")miniWin();else if(r==="end")miniEnd();else if(canWalk()){$("#mPause").classList.add("glow");$("#mWalkC").classList.remove("hide")}}
   else{miniInput();if(MS.mode==="bloom"){MS.bk=Math.min(1,MS.bk+dt/(g.bloomT||(g.short?2:3)));if(MS.bk>=1)miniResult()}}
   miniDraw()}
-function miniDraw(){if(!MS||!MCTX)return;const c=MCTX,g=MS.g,s=MS.s,t=performance.now();c.imageSmoothingEnabled=false;c.setTransform(2,0,0,2,0,0);miniPlateTick();c.globalAlpha=1;c.globalCompositeOperation="source-over";
+function miniDraw(){if(MS&&MS.paint){paintDraw();return}if(!MS||!MCTX)return;const c=MCTX,g=MS.g,s=MS.s,t=performance.now();c.imageSmoothingEnabled=false;c.setTransform(2,0,0,2,0,0);miniPlateTick();c.globalAlpha=1;c.globalCompositeOperation="source-over";
   if(MS.res&&MS.res.win&&(MS.mode==="bloom"||MS.mode==="result"))g.bloom(s,c,s.rm?1:MS.bk,t);else g.draw(s,c,t)}
 function miniInput(){const k=MK,t=MT;let dx=MP.pdx,dy=MP.pdy;if(k.ArrowLeft)dx=-1;if(k.ArrowRight)dx=1;if(k.ArrowUp)dy=-1;if(k.ArrowDown)dy=1;
   const inp={dx,dy,a:!!(MP.aH||k.z||k[" "]||k.Enter),b:!!(MP.bH||k.x),aTap:!!(MP.aT||t.z||t[" "]||t.Enter),bTap:!!(MP.bT||t.x),lTap:!!t.ArrowLeft,rTap:!!t.ArrowRight,uTap:!!t.ArrowUp,dTap:!!t.ArrowDown,
@@ -2906,30 +2912,54 @@ function miniInput(){const k=MK,t=MT;let dx=MP.pdx,dy=MP.pdy;if(k.ArrowLeft)dx=-
   MP.taps=[];MP.ups=[];MP.aT=MP.bT=false;MP.swipe=null;MP.drag=null;for(const key in t)delete t[key];return inp}
 function miniClearInput(){for(const k in MK)delete MK[k];for(const k in MT)delete MT[k];Object.assign(MP,{taps:[],down:null,drag:null,swipe:null,aH:false,bH:false,aT:false,bT:false,pdx:0,pdy:0,padId:null,ups:[],pd:0});MP.ptrs.clear();MP.pts.clear();const kn=$("#mknob");if(kn)kn.style.transform="";["mA","mB"].forEach(i=>{const b=$("#"+i);if(b)b.classList.remove("on")})}
 const canWalk=()=>!!MS&&!MS.replay&&(MS.sess.tries>=2||MS.sess.t>=(MS.boss||MS.g.short?120:MS.g.long?240:180)); /* Phase 38: short games 2 minutes */ /* Phase 29 (G8): 3 minutes, 4 for the long games; boss rounds keep 2 */
-function miniPlay(fresh){if(fresh){MS.s=newMiniState(MS.g);MS.practice=0}MS.mode="play";MS.res=null;MS.bk=0;miniClearInput();miniSayClear();
+function miniPlay(fresh){if(fresh){MS.s=newMiniState(MS.g);MS.practice=0;if(MS.paint)paintStartStage()}MS.mode="play";MS.res=null;MS.bk=0;miniClearInput();miniSayClear();
   {const g=MS.g,st=(MS.s&&MS.s.st)||0,nm=(g.stages||[])[st];if(nm){miniBanner(stageLabel(g,st));if(g.lines&&g.lines[st]&&st>0)miniSay(g.lines[st],1500)}} /* Phase 30: the stage you start (or restart) on is named too */
-  if(!MS.boss){const m=P.m[MS.id]||(P.m[MS.id]={best:0,plays:0,won:false,at:0});m.plays=(m.plays||0)+1;saveLocal()}miniCard()}
+  if(!MS.boss&&!MS.g.hidden){const m=P.m[MS.id]||(P.m[MS.id]={best:0,plays:0,won:false,at:0});m.plays=(m.plays||0)+1;saveLocal()}miniCard()}
 function miniTry(){if(MS&&MS.mode==="play")MS.sess.tries++} /* Phase 45B: a game with no "end" (it never stops you) reports a missed attempt here, so Walk on can come after 2 */
 function miniHowHTML(g){return g.goal&&g.ctl?`<p class="mhow"><b>Goal</b>${esc(g.goal)}</p><p class="mhow"><b>Controls</b>${esc(g.ctl)}</p>`:esc(g.how||"")} /* Phase 45B: the instruction card (goal in one sentence, controls in one sentence) */
 function miniHelp(){if(!MS)return;if(MS.mode==="help"){miniResume();return}if(MS.mode!=="play"&&MS.mode!=="pause")return;if(MS.mode==="play")MS.prev="play";MS.mode="help";miniClearInput();miniSayClear();miniCard()}
 function miniEnd(){if(!MS)return;MS.sess.tries++;MS.mode="over";miniSayClear();sfx("end");miniCard()}
-function saveMiniResult(id,fl,won){const g=MINI[id];if(g&&g.boss)return; /* a boss round is never saved */if(MS&&MS.id===id&&MS.practice>0)return; /* Phase 36: a practice run (from Stage II or III) changes no lanterns and no best; its play was already counted */const now=Date.now(),m=P.m[id]||(P.m[id]={best:0,plays:0,won:false,at:0});
+function saveMiniResult(id,fl,won){const g=MINI[id];if(g&&(g.boss||g.hidden))return; /* Plan 6: a hidden test game saves nothing */ /* a boss round is never saved */if(MS&&MS.id===id&&MS.practice>0)return; /* Phase 36: a practice run (from Stage II or III) changes no lanterns and no best; its play was already counted */const now=Date.now(),m=P.m[id]||(P.m[id]={best:0,plays:0,won:false,at:0});
   if(won){m.won=true;m.best=Math.max(m.best||0,g&&g.nofl?1:fl)}m.at=now;
   const cur=P.g[id];if(won){if(!cur||(cur.fl||0)<fl||cur.walk)P.g[id]={fl,at:now}}else if(!cur)P.g[id]={fl:0,at:now,walk:1};
   persist()}
 function miniAwardArt(){const A=MS&&MS.art;if(!A||MS.replay||isFound(A))return;P.f[A.id+":"+A.i]=1;MS.awarded=true;saveLocal();persist()}
-function miniWin(){if(!MS)return;miniSayClear();const g=MS.g,s=MS.s,fl=g.nofl?0:Math.max(1,Math.min(3,Math.round(g.rate?g.rate(s):1)));sfx("win");
+function miniWin(){if(!MS)return;if(MS.paint)for(let i=0;i<=((MS.s&&MS.s.st)||0);i++)paintAward(i);miniSayClear();const g=MS.g,s=MS.s,fl=g.nofl?0:Math.max(1,Math.min(3,Math.round(g.rate?g.rate(s):1)));sfx("win");
   s._fl=fl||1;MS.res={win:true,fl};saveMiniResult(MS.id,fl,true);miniAwardArt();MS.bk=0;MS.mode="bloom";miniCard();if(s.rm){MS.bk=1;miniResult()}}
 function miniResult(){if(!MS)return;MS.bk=1;MS.mode="result";miniCard()}
-function miniWalk(){if(!MS)return;saveMiniResult(MS.id,0,false);miniAwardArt();MS.res={walk:true};MS.mode="walked";miniCard()}
+function miniWalk(){if(!MS)return;if(MS.paint){if(paintWalk())return;paintAward((MS.s&&MS.s.st)||0)}saveMiniResult(MS.id,0,false);miniAwardArt();MS.res={walk:true};MS.mode="walked";miniCard()}
 function miniLeave(){if(MS&&MS.boss)return; /* a boss round can't be left or skipped (Cade) */closeMini()}
 function closeMini(){const id=MS&&MS.id,from=MS&&MS.from;stopMiniLoop();miniSayClear();for(const t of lanTimers)clearTimeout(t);lanTimers=[];miniClearInput();miniPlateReset();$("#mBanner").classList.add("hide");MS=null;miniRelease(id);miniReturn(from)}
+
+/* ---- Plan 6 (Phase 47): painted games ----
+   A painted game has engine:"paint". mini/g/_list.js registers a stub for each one (metadata only).
+   When it opens: load mini/pixi.min.js and mini/paint.js once, then mini/g/<id>.js (it calls PAINT.game(def)), then its art.
+   Each stage gives one of the thinker's artifacts (stage i -> ARTI[who].items[i]). Walk on gives the current stage's artifact and opens the next stage.
+   A game opened from the world starts at the first stage whose artifact is not yet found; that run counts as practice for lanterns (Phase 48 may change this). */
+let PAINT_OPEN=null,PAINT_BOOT=null,PAINT_BUSY=false;
+function paintScript(src){return new Promise((ok,no)=>{const el=document.createElement("script");el.src=src;el.onload=ok;el.onerror=()=>no(new Error("could not load "+src));document.head.appendChild(el)})}
+function paintStub(id,meta){const g=MINI[id]&&MINI[id].engine==="paint"?MINI[id]:{};MINI[id]=Object.assign(g,{engine:"paint",ready:!!g.ready},meta||{});return MINI[id]}
+function paintBoot(){if(!PAINT_BOOT)PAINT_BOOT=(window.PIXI?Promise.resolve():paintScript("mini/pixi.min.js")).then(()=>window.PAINT&&PAINT.scene?0:paintScript("mini/paint.js")).then(()=>PAINT.init($("#mFrame"))).catch(e=>{PAINT_BOOT=null;throw e});return PAINT_BOOT}
+function paintOpen(id,opt){if(PAINT_BUSY)return;PAINT_BUSY=true;if(screen==="world")wtoast("One moment…");
+  paintBoot().then(()=>MINI[id].ready?0:paintScript("mini/g/"+id+".js")).then(()=>{const g=MINI[id];if(!g||!g.ready)throw new Error(id+" did not register");PAINT.begin(g.art||{});return PAINT.load()})
+   .then(()=>{PAINT_BUSY=false;PAINT_OPEN=id;startMini(id,opt);fitMini()})
+   .catch(e=>{PAINT_BUSY=false;console.error(e);wtoast("This game could not open on this device.")})}
+function paintStartStage(){const g=MS.g,n=(g.stages||[]).length;MS.found=MS.found||[];if(MS.replay||MS.boss||!n)return;const A=ARTI[g.who];if(!A)return;
+  let st=0;while(st<n-1&&P.f[g.who+":"+st])st++;MS.startSt=st;if(st>0){(g.toStage||stageUp)(MS.s,st);MS.practice=st}}
+function paintAward(i){if(!MS||MS.replay||MS.boss)return;const g=MS.g,A=ARTI[g.who],it=A&&A.items[i];if(!it)return;const k=g.who+":"+i;if(P.f[k])return;
+  P.f[k]=1;MS.awarded=true;MS.art={id:g.who,i,n:it.n,text:it.text};(MS.found=MS.found||[]).push(it.n);sfx("earned");saveLocal();persist();
+  if(window.PAINT&&PAINT.burst&&PAINT.ui)try{PAINT.burst(180,300,{preset:"sparks",n:24,color:0xF5C66A})}catch(e){}}
+function paintWalk(){const s=MS.s,n=(MS.g.stages||[]).length,st=(s&&s.st)||0;if(st>=n-1)return false;
+  paintAward(st);(MS.g.toStage||stageUp)(s,st+1);if(MS.g.toStage)MS.sess.st=Math.max(MS.sess.st||0,st+1);MS.sess.tries=0;MS.sess.t=0;MS.mode="play";miniClearInput();miniCard();miniPips();return true}
+function paintDraw(){if(!PAINT.view)return;const g=MS.g,s=MS.s,t=performance.now();
+  try{if(MS.res&&MS.res.win&&(MS.mode==="bloom"||MS.mode==="result")&&g.bloom)g.bloom(s,s.rm?1:MS.bk,t);else if(g.view)g.view(s,t)}catch(e){console.error(e)}
+  PAINT.frame(MS.mode==="pause"||MS.mode==="help"?0:MS.dt||0);PAINT.render()}
 /* Phase 36 hooks. miniRelease(id): free the closed game's art (36-B). miniReturn(from): where a closed game goes back to (36-A; "gallery" returns to the gallery). */
-function miniRelease(id){if(!id)return;const g=MINI[id];try{if(g&&g.release)g.release()}catch(e){console.error(e)} /* the game's own caches (silhouettes, backdrops, tinted copies) */
+function miniRelease(id){if(!id)return;const g=MINI[id];if(g&&g.engine==="paint"&&PAINT_OPEN===id){PAINT_OPEN=null;try{PAINT.end()}catch(e){console.error(e)}$("#mini").classList.remove("paint")}try{if(g&&g.release)g.release()}catch(e){console.error(e)} /* the game's own caches (silhouettes, backdrops, tinted copies) */
   const ids=miniAssetIds(id);ids.forEach(miniDrop);
   if(typeof MTINT!=="undefined")for(const k of Object.keys(MTINT))if(ids.has(k.split("|")[0]))delete MTINT[k]; /* fx.js tinted copies */
   if(MINI_OPEN===id)MINI_OPEN=null}
-function miniReturn(from){if(from==="gallery"){openPanel("gallery",galFrom||"world");$("#panel").scrollTop=galY;return}show("world")}
+function miniReturn(from){if(from==="title"){show("title");return} /* Plan 6: the ?paintdemo link returns to the title */if(from==="gallery"){openPanel("gallery",galFrom||"world");$("#panel").scrollTop=galY;return}show("world")}
 function bossRoundDone(){const id=MS&&MS.id;stopMiniLoop();miniSayClear();for(const t of lanTimers)clearTimeout(t);lanTimers=[];miniClearInput();miniPlateReset();$("#mBanner").classList.add("hide");MS=null;miniRelease(id);
   if(!TK){show("world");return}
   show("talk");TK.i++;const nx=TK.steps[TK.i];if(!nx||nx.t==="end"){finishTalk(!!nx);return}renderStep()}
@@ -2976,11 +3006,11 @@ function miniCard(){const el=$("#mCard");if(!MS){el.classList.add("hide");el.cla
   el.innerHTML=h;el.classList.toggle("hide",!h)}
 
 /* ---- Stage input: taps and swipes on the screen, the ghost pad and A/B, and the keyboard (see the keydown handler) ---- */
-function mPt(e){const r=$("#mcv").getBoundingClientRect();return {x:(e.clientX-r.left)/r.width*192,y:(e.clientY-r.top)/r.height*320}}
+function mPt(e){if(MS&&MS.paint&&window.PAINT&&PAINT.app)return PAINT.toUnits(e.clientX,e.clientY);const r=$("#mcv").getBoundingClientRect();return {x:(e.clientX-r.left)/r.width*192,y:(e.clientY-r.top)/r.height*320}}
 $("#mini").addEventListener("pointerdown",e=>{if(!MS||MS.mode!=="play"||e.target.closest("button,#mCard,#mpad,#mab"))return;e.preventDefault();const p=mPt(e);MP.taps.push(p);MP.ptrs.add(e.pointerId);MP.pts.set(e.pointerId,{x:p.x,y:p.y});if(!MP.down)MP.down={x:p.x,y:p.y,x0:p.x,y0:p.y,id:e.pointerId,t0:performance.now()}});
 $("#mini").addEventListener("pointermove",e=>{if(MP.pts.has(e.pointerId)){const q=mPt(e);MP.pts.set(e.pointerId,{x:q.x,y:q.y})}const d=MP.down;if(!d||d.id!==e.pointerId)return;const p=mPt(e);const dr=MP.drag||{x:p.x,y:p.y,dx:0,dy:0};dr.dx+=p.x-d.x;dr.dy+=p.y-d.y;dr.x=p.x;dr.y=p.y;MP.drag=dr;d.x=p.x;d.y=p.y});
 const mUp=e=>{MP.ptrs.delete(e.pointerId);MP.pts.delete(e.pointerId);const d=MP.down;if(!d||d.id!==e.pointerId)return;const p=mPt(e),dx=p.x-d.x0,dy=p.y-d.y0;MP.ups.push({x:p.x,y:p.y,t:performance.now()-d.t0});
-  if(Math.hypot(dx,dy)>=20&&performance.now()-d.t0<500)MP.swipe=Math.abs(dx)>Math.abs(dy)?(dx<0?"left":"right"):(dy<0?"up":"down");MP.down=null};
+  if(Math.hypot(dx,dy)>=(MS&&MS.paint?40:20)&&performance.now()-d.t0<500)MP.swipe=Math.abs(dx)>Math.abs(dy)?(dx<0?"left":"right"):(dy<0?"up":"down");MP.down=null};
 $("#mini").addEventListener("pointerup",mUp);$("#mini").addEventListener("pointercancel",mUp);
 const mpad=$("#mpad"),mknob=$("#mknob");
 function mPadMove(e){const r=mpad.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy),m=r.width*.36;
@@ -3259,6 +3289,7 @@ try{document.fonts&&document.fonts.load('20px "IM Fell English SC"')}catch(e){}
 <script src="mini/s3.js"></script>
 <script src="mini/s4.js"></script>
 <script src="mini/boss.js"></script>
+<script src="mini/g/_list.js"></script>
 <script src="mini/voice.js"></script>
 <script src="mini/audio.js"></script>
 

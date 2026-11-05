@@ -2461,6 +2461,88 @@ return out})()""")
 
     L1_45 = ["leap", "doors", "voices", "crowd", "sisyphus", "goalkeeper", "idols", "cages", "tornpage", "oncemore", "absurd", "excuses", "medal", "becoming", "rosary", "rose", "zenletter"]
 
+    async def p47(self, b):
+        """Plan 6 Phase 47 (foundation): the PAINT toolkit, the paint stage shell, stage artifacts, and the paint_demo test game."""
+        here = os.path.dirname(os.path.abspath(__file__)); root = os.path.dirname(self.path)
+        # 1) files
+        px = os.path.join(root, "mini", "pixi.min.js"); pj = os.path.join(root, "mini", "paint.js")
+        ok = os.path.exists(px) and "8.22.0" in open(px, encoding="utf-8", errors="ignore").read(400000)
+        self.add("p47", "pixi_file", ok, f"mini/pixi.min.js {os.path.getsize(px)/1024:.0f} KB, version 8.22.0" if os.path.exists(px) else "mini/pixi.min.js missing")
+        parts = sorted(glob.glob(os.path.join(root, "mini", "paint", "[0-9][0-9]-*.js")))
+        built = open(pj, encoding="utf-8").read() if os.path.exists(pj) else ""
+        fresh = all(open(f, encoding="utf-8").read().rstrip() in built for f in parts) and len(parts) >= 6
+        self.add("p47", "paint_js_built", fresh, f"mini/paint.js {len(built.encode())/1024:.1f} KB from {len(parts)} parts (run tools/build_paint.py after a part changes)")
+        gs = sorted(glob.glob(os.path.join(root, "mini", "g", "*.js")))
+        big = [f"{os.path.basename(f)} {os.path.getsize(f)//1024} KB" for f in gs if os.path.getsize(f) > 60*1024]
+        self.add("p47", "game_file_sizes", not big, f"{len(gs)} files in mini/g/; over 60 KB: {', '.join(big) or 'none'}")
+        OPEN = """(async()=>{if(screen!=='world'&&screen!=='mini')__kitEnter('l1');paintStub('paint_demo',{hidden:true,who:'kierkegaard',land:'l1',title:'Paint Demo'});startMini('paint_demo');
+          for(let i=0;i<200&&!(MS&&MS.paint&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));return !!(MS&&MS.paint&&MS.s&&MS.s.V)})()"""
+        # the real loop (miniTick: auto, step, stage awards, win, bloom) at fixed 1/20 s steps; the slow software GL renders every 10th step only
+        AUTO = """(async()=>{miniPlay(false);MS.auto=true;stopMiniLoop();const seen=new Set(),R=PAINT.render;let i=0;PAINT.render=()=>{if(++i%10===0)R()};
+          try{for(let k=0;k<4000&&MS&&(MS.mode==='play'||MS.mode==='bloom');k++){seen.add(MS.s.st);miniTick(.05);if(k%40===0)await new Promise(r=>setTimeout(r,0))}}finally{PAINT.render=R}
+          if(MS)startMiniLoop();
+          return {mode:MS&&MS.mode,fl:MS&&MS.res&&MS.res.fl,stages:[...seen],found:[0,1,2].map(i=>!!P.f['kierkegaard:'+i]),card:(document.querySelector('#mCard')||{}).textContent||''}})()"""
+        for rm in (False, True):
+            tag = "_rm" if rm else ""
+            ctx, pg, errs = await self.page(b, reduced=rm)
+            stacks = []; pg.on("pageerror", lambda e: stacks.append((e.stack or str(e))[:400]))
+            up = await pg.evaluate(OPEN)
+            info = await pg.evaluate("({gl:PAINT.app&&PAINT.app.renderer.name,cls:document.querySelector('#mini').classList.contains('paint'),cv:!!document.querySelector('#mpx'),w:PAINT.app&&PAINT.app.canvas.style.width})") if up else {}
+            self.add("p47", "paint_boot" + tag, up and info.get("gl") == "webgl" and info.get("cls") and not errs, f"engine loaded and scene built: {up}; renderer {info.get('gl')}; #mini.paint {info.get('cls')}; canvas width {info.get('w')}; page errors: {errs[:2] or 'none'}")
+            if not up:
+                await ctx.close(); continue
+            if not rm:
+                shot = os.path.join(tempfile.gettempdir(), "p47_demo.png"); await pg.screenshot(path=shot)
+                try:
+                    from PIL import Image, ImageStat
+                    st = ImageStat.Stat(Image.open(shot).convert("L")); var = st.stddev[0]
+                    self.add("p47", "paint_fallback_draws", var > 12, f"no-art scene is painted, not blank (screen brightness spread {var:.1f}, want > 12); shot {shot}")
+                except Exception as e:
+                    self.add("p47", "paint_fallback_draws", None, f"PIL not available: {e}")
+                # speed + draw calls: game step + view + PAINT.frame (CPU), separately the render submit
+                perf = await pg.evaluate("""(async()=>{miniPlay(false);const gl=PAINT.app.renderer.gl;let n=0;const de=gl.drawElements.bind(gl),da=gl.drawArrays.bind(gl),dei=gl.drawElementsInstanced&&gl.drawElementsInstanced.bind(gl);
+                  gl.drawElements=(...a)=>{n++;return de(...a)};gl.drawArrays=(...a)=>{n++;return da(...a)};if(dei)gl.drawElementsInstanced=(...a)=>{n++;return dei(...a)};
+                  stopMiniLoop();const g=MS.g,s=MS.s;let cpu=[],ren=[],calls=[];for(let i=0;i<120;i++){const inp=miniBlankInp();g.auto(s,inp);const t0=performance.now();s.t+=1/60;g.step(s,1/60,inp);g.view(s,performance.now());PAINT.frame(1/60);const t1=performance.now();n=0;PAINT.render();ren.push(performance.now()-t1);calls.push(n);cpu.push(t1-t0)}
+                  gl.drawElements=de;gl.drawArrays=da;if(dei)gl.drawElementsInstanced=dei;startMiniLoop();cpu.sort((a,b)=>a-b);ren.sort((a,b)=>a-b);
+                  return {cpu50:cpu[60],cpu90:cpu[108],ren50:ren[60],calls:Math.max(...calls),parts:(PAINT.stats&&PAINT.stats.parts)||null}})()""")
+                self.add("p47", "paint_cpu_budget", perf["cpu90"] < 8, f"step+view+toolkit frame: median {perf['cpu50']:.2f} ms, 90th {perf['cpu90']:.2f} ms (line 8 ms)")
+                self.add("p47", "paint_draw_calls", perf["calls"] <= 60, f"most draw calls in one frame: {perf['calls']} (line 60)")
+                self.add("p47", "paint_render_time", None, f"render submit median {perf['ren50']:.1f} ms in the software GL of the test browser (a phone GPU is far faster; information only)")
+                await pg.evaluate("(()=>{closeMini();P.f={}})()"); up = await pg.evaluate(OPEN)
+            r = await pg.evaluate(AUTO)
+            self.add("p47", "paint_demo_auto" + tag, r["mode"] == "result" and set(r["stages"]) >= {0, 1, 2} and (r["fl"] or 0) >= 1, f"auto plays to the result card: mode {r['mode']}, stages seen {sorted(r['stages'])}, lanterns {r['fl']}")
+            self.add("p47", "stage_artifacts_paint_demo" + tag, all(r["found"]), f"each stage gives one artifact: kierkegaard:0..2 found = {r['found']}")
+            rel = await pg.evaluate("(()=>{closeMini();return {open:PAINT_OPEN,view:!!PAINT.view,tx:Object.keys(PAINT.tx).length,cls:document.querySelector('#mini').classList.contains('paint'),ms:!!MS}})()")
+            self.add("p47", "paint_release" + tag, rel["open"] is None and not rel["view"] and not rel["cls"] and not rel["ms"], f"closing frees the scene and art: {rel}")
+            self.add("p47", "paint_no_errors" + tag, not errs, f"page errors during the paint run: {stacks[:1] or errs[:2] or 'none'}")
+            if rm:
+                sh = await pg.evaluate("(()=>{PAINT.begin({});PAINT.shake&&PAINT.shake(10,1);const v=PAINT.cam.shake||0;PAINT.end();return v})()")
+                self.add("p47", "reduce_motion_paint", not sh, f"camera shake under Reduce Motion: {sh} (want 0)")
+            await ctx.close()
+        # walk on: gives the stage's artifact and opens the next stage; a world start skips found stages
+        ctx, pg, errs = await self.page(b)
+        await pg.evaluate(OPEN)
+        w = await pg.evaluate("""(async()=>{miniPlay(false);MS.sess.tries=2;const c=canWalk();miniWalk();const a={can:c,st:MS.s.st,mode:MS.mode,f0:!!P.f['kierkegaard:0'],f1:!!P.f['kierkegaard:1']};
+          closeMini();P.f['kierkegaard:1']=1;paintStub('paint_demo',{});startMini('paint_demo');for(let i=0;i<100&&!(MS&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));
+          a.start=MS&&MS.s.st;a.practice=MS&&MS.practice;closeMini();return a})()""")
+        self.add("p47", "paint_walk_on", w["can"] and w["st"] == 1 and w["mode"] == "play" and w["f0"] and not w["f1"], f"Walk on in Stage I: artifact 1 given {w['f0']}, now Stage {w['st']+1}, still playing ({w['mode']})")
+        self.add("p47", "paint_world_start", w["start"] == 2 and w["practice"] == 2, f"with artifacts 1–2 found, the game opens at Stage {(w['start'] or 0)+1} (want III) as a practice run ({w['practice']})")
+        # mashing earns no full lanterns
+        m = await pg.evaluate("""(async()=>{paintStub('paint_demo',{});P.f={};startMini('paint_demo');for(let i=0;i<100&&!(MS&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));
+          const g=MS.g,s=newMiniState(g);let seed=3;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};let res=null;
+          for(let i=0;i<4000&&res!=='win';i++){const inp=miniBlankInp();if(rnd()<.6){const tp={x:rnd()*360,y:rnd()*780};inp.tap=tp;inp.taps=[tp];inp.down={x:tp.x,y:tp.y}}inp.a=rnd()<.5;inp.aTap=rnd()<.3;s.t+=.05;res=g.step(s,.05,inp)}
+          const fl=g.rate(s);closeMini();return {fl,won:res==='win',miss:s.miss}})()""")
+        self.add("p47", "no_mash_paint_demo", m["fl"] < 3, f"random mashing: lanterns {m['fl']} (want under 3), misses {m['miss']}, reached the end {m['won']}")
+        # an old canvas game still opens the old way
+        o = await pg.evaluate("(()=>{startMini('gadfly');const r={paint:MS&&MS.paint,cls:document.querySelector('#mini').classList.contains('paint')};closeMini();return r})()")
+        self.add("p47", "old_games_unchanged", not o["paint"] and not o["cls"], f"The Gadfly opens on the old canvas: {o}")
+        await ctx.close()
+        # the engine cannot load: no crash, the world stays
+        ctx, pg, errs = await self.page(b, block=["mini/pixi.min.js"])
+        f = await pg.evaluate("""(async()=>{paintStub('paint_demo',{hidden:true,who:'kierkegaard',land:'l1',title:'Paint Demo'});startMini('paint_demo');await new Promise(r=>setTimeout(r,1500));return {ms:!!MS,busy:PAINT_BUSY,scr:screen}})()""")
+        self.add("p47", "paint_load_fail_safe", not f["ms"] and not f["busy"] and not errs, f"with mini/pixi.min.js blocked: no game opens ({f}), page errors: {errs[:1] or 'none'}")
+        await ctx.close()
+
     async def p45(self, b):
         """Phase 45B (Level I fix-up): mini_suite and hd_suite for the Level I games, then every module in kits/p45/*.py
         (each defines async def run(kit, b, pg); a module named <id>.py or <id>_*.py belongs to game <id>). --mini-ids limits both."""
@@ -3612,7 +3694,7 @@ return out})(""" + ("true" if blobs else "false") + ")")
                 self.add("info", "dump_world", None, f"Level I world saved to {self.args.dump_world}")
             core = [self.check_data, self.check_balance, self.check_map, self.check_play,
                     self.check_reveal_text, self.check_layout_se, self.check_builtin_art]
-            phases = {"p0": self.p0, "p1": self.p1, "p2": self.p2, "p3": self.p3, "p4": self.p4, "p5": self.p5, "p6": self.p6, "p7": self.p7, "p9": self.p9, "p11": self.p11, "p13": self.p13, "p15": self.p15, "p16": self.p16, "p18": self.p18, "p19": self.p19, "p20": self.p20, "p21": self.p21, "p22": self.p22, "p23": self.p23, "p24": self.p24, "p25": self.p25, "p26": self.p26, "p28": self.p28, "addendum": self.addendum, "p29": self.p29, "p30": self.p30, "p31": self.p31, "p32": self.p32, "p33": self.p33, "p34": self.p34, "p35": self.p35, "p36": self.p36, "p38": self.p38, "p39": self.p39, "p40": self.p40, "p41": self.p41, "p42": self.p42, "p43": self.p43, "p44": self.p44, "p45": self.p45}
+            phases = {"p0": self.p0, "p1": self.p1, "p2": self.p2, "p3": self.p3, "p4": self.p4, "p5": self.p5, "p6": self.p6, "p7": self.p7, "p9": self.p9, "p11": self.p11, "p13": self.p13, "p15": self.p15, "p16": self.p16, "p18": self.p18, "p19": self.p19, "p20": self.p20, "p21": self.p21, "p22": self.p22, "p23": self.p23, "p24": self.p24, "p25": self.p25, "p26": self.p26, "p28": self.p28, "addendum": self.addendum, "p29": self.p29, "p30": self.p30, "p31": self.p31, "p32": self.p32, "p33": self.p33, "p34": self.p34, "p35": self.p35, "p36": self.p36, "p38": self.p38, "p39": self.p39, "p40": self.p40, "p41": self.p41, "p42": self.p42, "p43": self.p43, "p44": self.p44, "p45": self.p45, "p47": self.p47}
             for fn in core:
                 if want and fn.__name__.replace("check_", "") not in want and "core" not in want:
                     continue

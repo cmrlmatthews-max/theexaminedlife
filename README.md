@@ -17,6 +17,7 @@ The game is made for an iPhone in vertical orientation. It also runs in a deskto
 
 - `index.html`: the game.
 - `mini/`: the mini-games, boss rounds, music, and voice player.
+- `mini/paint.js`, `mini/pixi.min.js`, `mini/g/`: the painted mini-games of Plan 6 (PixiJS 8.22.0). `mini/paint.js` is built from `mini/paint/` by `tools/build_paint.py`. Add `?paintdemo` to the address to see the test scene.
 - `a/`: art, videos, and voice clips. Each file name is the asset id that the code uses.
 - `tools/`: the build and art scripts, and the test kit (`examined-life-testkit.py`). These are records of how the game was made. The game does not need them to run.
 
