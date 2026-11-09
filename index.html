@@ -2949,8 +2949,11 @@ function paintStartStage(){const g=MS.g,n=(g.stages||[]).length;MS.found=MS.foun
 function paintAward(i){if(!MS||MS.replay||MS.boss)return;const g=MS.g,A=ARTI[g.who],it=A&&A.items[i];if(!it)return;const k=g.who+":"+i;if(P.f[k])return;
   P.f[k]=1;MS.awarded=true;MS.art={id:g.who,i,n:it.n,text:it.text};(MS.found=MS.found||[]).push(it.n);sfx("earned");saveLocal();persist();
   if(window.PAINT&&PAINT.burst&&PAINT.ui)try{PAINT.burst(180,300,{preset:"sparks",n:24,color:0xF5C66A})}catch(e){}}
-function paintWalk(){const s=MS.s,n=(MS.g.stages||[]).length,st=(s&&s.st)||0;if(st>=n-1)return false;
-  paintAward(st);(MS.g.toStage||stageUp)(s,st+1);if(MS.g.toStage)MS.sess.st=Math.max(MS.sess.st||0,st+1);MS.sess.tries=0;MS.sess.t=0;MS.mode="play";miniClearInput();miniCard();miniPips();return true}
+/* Walk on before the last stage: give this stage's artifact, show its walk line (walk:[s1,s2,s3]) on the card, then Continue opens the next stage (Phase 49B) */
+function paintWalk(){const s=MS.s,n=(MS.g.stages||[]).length,st=(s&&s.st)||0;MS.walkSt=st;if(st>=n-1)return false;
+  paintAward(st);MS.mode="walked";MS.walkOn=true;(MS.g.toStage||stageUp)(s,st+1);if(MS.g.toStage)MS.sess.st=Math.max(MS.sess.st||0,st+1);MS.sess.tries=0;MS.sess.t=0;miniClearInput();miniSayClear();miniCard();miniPips();return true}
+function paintWalkResume(){MS.walkOn=false;MS.mode="play";const g=MS.g,st=(MS.s&&MS.s.st)||0;miniClearInput();if((g.stages||[])[st]){miniBanner(stageLabel(g,st));sfx("stage");if(g.lines&&g.lines[st])miniSay(g.lines[st],1500)}miniCard();miniPips()}
+const walkLine=(g,st)=>Array.isArray(g.walk)?(g.walk[Math.min(st||0,g.walk.length-1)]||""):(g.walk||""); /* Plan 6: a painted game has one walk line for each stage */
 function paintDraw(){if(!PAINT.view)return;const g=MS.g,s=MS.s,t=performance.now();
   try{if(MS.res&&MS.res.win&&(MS.mode==="bloom"||MS.mode==="result")&&g.bloom)g.bloom(s,s.rm?1:MS.bk,t);else if(g.view)g.view(s,t)}catch(e){console.error(e)}
   PAINT.frame(MS.mode==="pause"||MS.mode==="help"?0:MS.dt||0);PAINT.render()}
@@ -2963,7 +2966,7 @@ function miniReturn(from){if(from==="title"){show("title");return} /* Plan 6: th
 function bossRoundDone(){const id=MS&&MS.id;stopMiniLoop();miniSayClear();for(const t of lanTimers)clearTimeout(t);lanTimers=[];miniClearInput();miniPlateReset();$("#mBanner").classList.add("hide");MS=null;miniRelease(id);
   if(!TK){show("world");return}
   show("talk");TK.i++;const nx=TK.steps[TK.i];if(!nx||nx.t==="end"){finishTalk(!!nx);return}renderStep()}
-function miniContinue(){if(MS&&MS.boss){bossRoundDone();return}const A=MS&&MS.art,award=!!(MS&&MS.awarded);closeMini();
+function miniContinue(){if(MS&&MS.boss){bossRoundDone();return}if(MS&&MS.walkOn){paintWalkResume();return} /* Plan 6 (Phase 49B): Walk on in Stage I or II continues into the next stage */const A=MS&&MS.art,award=!!(MS&&MS.awarded);closeMini();
   if(A&&award){sfx("earned");openSign("Artifact · "+A.n,A.text);const n=foundCount(A.id),nm=PH[A.id].n;wtoast(n>=3?`All 3 found. ${nm} is ready to talk.`:`Artifact found: ${n} of 3 for ${nm}`)}}
 function miniPause(){if(!MS)return;if(MS.mode==="pause"){miniResume();return}if(MS.mode==="bloom"||MS.mode==="result"||MS.mode==="walked")return;MS.prev=MS.mode==="help"?"play":MS.mode;MS.mode="pause";miniClearInput();miniSayClear();miniCard()}
 function miniResume(){if(!MS)return;MS.mode=MS.prev||"play";MS.prev=null;miniCard()}
@@ -2982,7 +2985,7 @@ function miniAct(a){if(!MS)return;
 function miniCard(){const el=$("#mCard");if(!MS){el.classList.add("hide");el.classList.remove("res");return}el.classList.toggle("res",MS.mode==="result"||MS.mode==="walked");
   const playing=MS.mode==="play";$("#mWalkC").classList.toggle("hide",!(playing&&canWalk()));$("#mHelp").classList.toggle("hide",!(playing||MS.mode==="help"||MS.mode==="pause"));$("#mpad").classList.toggle("hide",!(playing&&MS.g.pad));$("#mab").classList.toggle("hide",!(playing&&MS.g.ab)); /* the controls only show while playing */
   for(const t of lanTimers)clearTimeout(t);lanTimers=[];
-  {const g=MS.g,m=MS.mode,vt=m==="setup"?(MS.i<g.setup.length?g.setup[MS.i]:g.how):m==="over"?(g.again||"Once more?"):m==="walked"?g.walk:m==="result"?g.win:m==="pause"?"":null;if(vt!==null)voSay(vt,g.who)} /* Phase 44B-3 */
+  {const g=MS.g,m=MS.mode,vt=m==="setup"?(MS.i<g.setup.length?g.setup[MS.i]:g.how):m==="over"?(g.again||"Once more?"):m==="walked"?walkLine(g,MS.walkSt):m==="result"?g.win:m==="pause"?"":null;if(vt!==null)voSay(vt,g.who)} /* Phase 44B-3 */
   const g=MS.g,m=MS.mode,who=esc(speakerName(g.who)),walkBtn=canWalk()?`<button class="reply" data-act="mwalk">Walk on</button>`:"",nc=g.boss?"narr":"",lv=MS.from==="gallery"?"Back to the gallery":"Leave";
   const box=(w,txt,cls,act)=>`<div class="dbox" ${act?`data-act="${act}" data-main`:""}><div class="who">${w}</div><div class="txt ${cls||""}">${txt}</div>${act?`<span class="cont">▼</span>`:""}</div>`;
   let h="";
@@ -2993,7 +2996,7 @@ function miniCard(){const el=$("#mCard");if(!MS){el.classList.add("hide");el.cla
   else if(m==="help")h=box(esc(g.title),miniHowHTML(g),"narr")+`<div class="mbtns"><button class="reply" data-act="mresume" data-main>Back to the game</button></div>`;
   else if(m==="pause")h=box(esc(g.title),"Paused.","narr")+`<div class="mbtns"><button class="reply" data-act="mresume" data-main>Resume</button><button class="reply" data-act="mrestart">Start over</button><button class="reply soft" data-act="sound">Sound: ${SND_ON?"On":"Off"}</button><button class="reply soft" data-act="voice">Voice: ${VOICE_ON?"On":"Off"}</button>${walkBtn}${g.boss?"":`<button class="reply soft" data-act="mleave">${lv}</button>`}</div>`;
   else if(m==="over")h=box(who,esc(g.again||"Once more?"),nc)+`<div class="mbtns"><button class="reply" data-act="mtry" data-main>Try again</button>${walkBtn}${g.boss?"":`<button class="reply soft" data-act="mleave">${lv}</button>`}</div>`;
-  else if(m==="walked")h=`<p class="mhead">${MS.art?"✦ Artifact earned: "+esc(MS.art.n):"✦ "+esc(g.title)}</p>`+box(who,esc(g.walk),nc)+`<div class="mbtns"><button class="reply" data-act="mcontinue" data-main>Continue</button></div>`;
+  else if(m==="walked")h=`<p class="mhead">${MS.art?"✦ Artifact earned: "+esc(MS.art.n):"✦ "+esc(g.title)}</p>`+box(who,esc(walkLine(g,MS.walkSt)),nc)+`<div class="mbtns"><button class="reply" data-act="mcontinue" data-main>Continue</button></div>`;
   else if(m==="result"){const fl=MS.res.fl,sv=(P.g[MS.id]&&P.g[MS.id].fl)||0,shown=g.nofl?0:(MS.practice>0?fl:Math.max(fl,sv)),pr=MS.practice>0?`<p class="mnexthint">A practice run from Stage ${ROMAN[MS.practice]}. Lanterns are earned from Stage I.</p>`:""; /* Phase 38: a practice run shows its own rating ("This run"), and saves nothing */
     const head=MS.art&&!MS.replay?`✦ Artifact earned: ${esc(MS.art.n)}`:`✦ ${esc(g.title)}`;
     const lan=g.boss?"":`<div class="mres">`+(g.nofl?`<p class="mwords">No lanterns here. Just the doing.</p>${pr}`:`<div class="mlanwrap">${lanternRow(0,"big")}</div><p class="mwords">${MS.practice>0?"This run: "+esc((LANTERN_WORDS[shown-1]||"").replace(/^./,ch=>ch.toLowerCase())):esc(LANTERN_WORDS[shown-1]||"")}</p>${pr||(shown<3&&g.flNext&&g.flNext[shown-1]?`<p class="mnexthint">${esc(g.flNext[shown-1])}</p>`:"")}`)+`</div>`;

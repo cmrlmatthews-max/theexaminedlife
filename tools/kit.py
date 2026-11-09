@@ -2438,12 +2438,14 @@ return out})()""")
         if only:
             ids = [i for i in ids if i in only]
         ctx, pg, errs = await self.page(b)
-        have = await pg.evaluate("((ids)=>ids.filter(i=>typeof MINI!=='undefined'&&MINI[i]))(" + json.dumps(ids) + ")")
+        have = await pg.evaluate("((ids)=>ids.filter(i=>typeof MINI!=='undefined'&&MINI[i]&&MINI[i].engine!=='paint'))(" + json.dumps(ids) + ")")
+        painted = await pg.evaluate("Object.keys(MINI).filter(i=>MINI[i].engine==='paint')")  # Plan 6: a game rebuilt as a painted game is tested in its own group (p49+)
         await ctx.close()
         if have:
             await self.mini_suite(b, grp, have)
             await self.hd_suite(b, grp, have)
         mods = sorted(glob.glob(os.path.join(here, "kits", grp, "*.py")))
+        mods = [m for m in mods if os.path.splitext(os.path.basename(m))[0] not in painted]
         if only:
             mods = [m for m in mods if os.path.splitext(os.path.basename(m))[0] in only]
         for f in mods:
@@ -2522,10 +2524,10 @@ return out})()""")
         # walk on: gives the stage's artifact and opens the next stage; a world start skips found stages
         ctx, pg, errs = await self.page(b)
         await pg.evaluate(OPEN)
-        w = await pg.evaluate("""(async()=>{miniPlay(false);MS.sess.tries=2;const c=canWalk();miniWalk();const a={can:c,st:MS.s.st,mode:MS.mode,f0:!!P.f['kierkegaard:0'],f1:!!P.f['kierkegaard:1']};
+        w = await pg.evaluate("""(async()=>{miniPlay(false);MS.sess.tries=2;const c=canWalk();miniWalk();const m0=MS.mode;miniContinue();const a={can:c,st:MS.s.st,mode:m0==='walked'?MS.mode:'no card: '+m0,f0:!!P.f['kierkegaard:0'],f1:!!P.f['kierkegaard:1']};
           closeMini();P.f['kierkegaard:1']=1;paintStub('paint_demo',{});startMini('paint_demo');for(let i=0;i<100&&!(MS&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));
           a.start=MS&&MS.s.st;a.practice=MS&&MS.practice;closeMini();return a})()""")
-        self.add("p47", "paint_walk_on", w["can"] and w["st"] == 1 and w["mode"] == "play" and w["f0"] and not w["f1"], f"Walk on in Stage I: artifact 1 given {w['f0']}, now Stage {w['st']+1}, still playing ({w['mode']})")
+        self.add("p47", "paint_walk_on", w["can"] and w["st"] == 1 and w["mode"] == "play" and w["f0"] and not w["f1"], f"Walk on in Stage I: artifact 1 given {w['f0']} on the walk card, then Continue: Stage {w['st']+1}, playing ({w['mode']})")
         self.add("p47", "paint_world_start", w["start"] == 2 and w["practice"] == 2, f"with artifacts 1–2 found, the game opens at Stage {(w['start'] or 0)+1} (want III) as a practice run ({w['practice']})")
         # mashing earns no full lanterns
         m = await pg.evaluate("""(async()=>{paintStub('paint_demo',{});P.f={};startMini('paint_demo');for(let i=0;i<100&&!(MS&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));
@@ -2550,12 +2552,14 @@ return out})()""")
         only = [x for x in getattr(self.args, "mini_ids", "").split(",") if x]
         ids = [i for i in self.L1_45 if not only or i in only]
         ctx, pg, errs = await self.page(b)
-        have = await pg.evaluate("((ids)=>ids.filter(i=>typeof MINI!=='undefined'&&MINI[i]))(" + json.dumps(ids) + ")")
+        have = await pg.evaluate("((ids)=>ids.filter(i=>typeof MINI!=='undefined'&&MINI[i]&&MINI[i].engine!=='paint'))(" + json.dumps(ids) + ")")
+        painted = await pg.evaluate("Object.keys(MINI).filter(i=>MINI[i].engine==='paint')")
         await ctx.close()
         if have:
             await self.mini_suite(b, "p45", have)
             await self.hd_suite(b, "p45", have)
         mods = sorted(glob.glob(os.path.join(here, "kits", "p45", "*.py")))
+        mods = [m for m in mods if os.path.splitext(os.path.basename(m))[0].split("_")[0] not in painted]
         if only:
             mods = [m for m in mods if os.path.splitext(os.path.basename(m))[0].split("_")[0] in only]
         for f in mods:
@@ -2568,6 +2572,144 @@ return out})()""")
             except Exception as e:
                 self.add("p45", f"module_{name}", False, f"kits/p45/{name}.py raised: {str(e)[:200]}")
             await ctx.close()
+
+    LEAP_ART = ["34867c0173109d1bd6b130ade5ebcd82.webp", "70ad1fdea14d8507bc42dce35fde9d31.webp", "3e68d40960a5ce81cc357e7180c9e5e6.webp", "644f938143c597f7b9654f1d459ec6a8.webp",
+                "17d7930ca0b9c86476fbbaaacde127fe.webp", "2df0fa4ae497884a0c94fb0bfd068b8d.webp", "738dbc4636abffbb24054e54c4afeee6.webp", "722a3398001272ffef27395bfcc9f0e9.webp",
+                "9d7451870644829abfc1aa5584cea2de.webp", "3db249cbbfec255da5b810e93124c857.webp", "3378954410b09121718e5a2eb1df4b06.webp", "87715277a01b7d4ee9bd9562ca9a933c.webp",
+                "d0be94205802ee707210f09e44e45928.webp"]
+    # shared page helpers for p49: open the game, a fresh live state, a tap, run n seconds of steps (no rendering)
+    LEAP_JS = r"""window.__L={open:async()=>{if(screen!=='world'&&screen!=='mini')__kitEnter('l1');if(MS)closeMini();startMini('leap');
+        for(let i=0;i<300&&!(MS&&MS.paint&&MS.s&&MS.s.V);i++)await new Promise(r=>setTimeout(r,50));return !!(MS&&MS.paint&&MS.s&&MS.s.V)},
+      mk:(n)=>{const g=MINI.leap,s=newMiniState(g);if(n)g.toStage(s,n);return s},
+      inp:()=>miniBlankInp(),
+      step:(s,inp,dt)=>{dt=dt||.05;s.t+=dt;return MINI.leap.step(s,dt,inp||miniBlankInp())},
+      run:(s,sec,fn)=>{let r;for(let i=0;i<sec*20;i++){r=__L.step(s,fn?fn(s):null);if(r==='win')return r}return r},
+      tap:(s,x,y)=>{const i=miniBlankInp();PAINT.autoTap(i,x==null?180:x,y==null?300:y);return __L.step(s,i)},
+      key:(s,k)=>{const i=miniBlankInp();i[k]=true;return __L.step(s,i)},
+      setBead:(s,b)=>{s.q=b},
+      settle:(s)=>{for(let i=0;i<80&&(s.w.a||s.out);i++)__L.step(s)}};true"""
+
+    async def p49(self, b):
+        """Plan 6 Phase 49B: The Leap, the painted pilot (brief C.1). paint_suite, rules, stage artifacts, Reduce Motion, mashing,
+        plus the brief's extra checks (waver, either side) and checks of each rule part (dizziness, nudge, shelf, sinking stacks, bell, last leap, Walk on)."""
+        G = "p49"; root = os.path.dirname(self.path)
+        f = os.path.join(root, "mini", "g", "leap.js")
+        src = open(f, encoding="utf-8").read() if os.path.exists(f) else ""
+        sz = len(src.encode()); arts = [os.path.join(root, "a", x) for x in self.LEAP_ART]
+        tot = sum(os.path.getsize(x) for x in arts if os.path.exists(x)); miss = [os.path.basename(x) for x in arts if not os.path.exists(x)]
+        self.add(G, "leap_file_size", 0 < sz < 60 * 1024, f"mini/g/leap.js {sz/1024:.1f} KB (line 60 KB)")
+        self.add(G, "leap_art_budget", not miss and tot < 6 * 1024 * 1024 and all(x in src for x in self.LEAP_ART), f"13 art files in a/, {tot/1048576:.2f} MB (line 6 MB); missing {miss or 'none'}")
+        f1 = open(os.path.join(root, "mini", "f1.js"), encoding="utf-8").read()
+        lst = open(os.path.join(root, "mini", "g", "_list.js"), encoding="utf-8").read()
+        self.add(G, "leap_old_kept_not_registered", "GAME:leap:BEGIN" in f1 and re.search(r"\bleap:\{", lst) is not None, "old Leap stays in mini/f1.js; the stub in mini/g/_list.js replaces it")
+        OPEN = "(async()=>{" + "await __L.open();return !!(MS&&MS.s&&MS.s.V)})()"
+        AUTO = """(async()=>{miniPlay(false);MS.auto=true;stopMiniLoop();const seen=new Set(),R=PAINT.render,ts={};let i=0,rot=0,sh=0,dz=0,dmax=0;PAINT.render=()=>{if(++i%12===0)R()};
+          try{for(let k=0;k<6000&&MS&&(MS.mode==='play'||MS.mode==='bloom'||MS.mode==='walked');k++){const st=MS.s.st;if(!seen.has(st)){seen.add(st);ts[st]=+MS.s.t.toFixed(1)}
+            miniTick(.05);rot=Math.max(rot,Math.abs(PAINT.cam.rot||0));sh=Math.max(sh,PAINT.cam.shake||0);if(MS.s.d>.3&&MS.s.V)dz=Math.max(dz,MS.s.V.dz.alpha);dmax=Math.max(dmax,MS.s.d);if(k%40===0)await new Promise(r=>setTimeout(r,0))}}finally{PAINT.render=R}
+          const s=MS&&MS.s;const o={mode:MS&&MS.mode,fl:MS&&MS.res&&MS.res.fl,stages:[...seen],ts,t:s&&+s.t.toFixed(1),found:[0,1,2].map(i=>!!P.f['kierkegaard:'+i]),rot,sh,dz,dmax,plate:s&&s.V&&+s.V.plate.alpha.toFixed(2),
+            counts:s&&{shorts:s.shorts,nudges:s.nudges,downs:s.downs,waver:s.waver,leaps:s.leaps},card:((document.querySelector('#mCard')||{}).textContent||'').slice(0,160)};
+          if(MS)startMiniLoop();return o})()"""
+        shotdir = getattr(self.args, "mini_shots", None)
+        for tag, rm, noart in (("", False, False), ("_rm", True, False), ("_noart", False, True)):
+            ctx, pg, errs = await self.page(b, reduced=rm, block=(["a/" + x for x in self.LEAP_ART] if noart else None))
+            stacks = []; pg.on("pageerror", lambda e: stacks.append((e.stack or str(e))[:400]))
+            await pg.evaluate(self.LEAP_JS); await pg.evaluate("P.f={}")
+            up = await pg.evaluate(OPEN)
+            if not up:
+                self.add(G, "paint_suite_leap" + tag, False, f"the game did not open; errors {errs[:2]}"); await ctx.close(); continue
+            if tag == "":
+                perf = await pg.evaluate("""(async()=>{miniPlay(false);const gl=PAINT.app.renderer.gl;let n=0;const de=gl.drawElements.bind(gl),da=gl.drawArrays.bind(gl);
+                  gl.drawElements=(...a)=>{n++;return de(...a)};gl.drawArrays=(...a)=>{n++;return da(...a)};
+                  stopMiniLoop();const g=MS.g;let cpu=[],calls=[];for(const st of [0,1,2]){const s=__L.mk(st);MS.s=s;for(let i=0;i<60;i++){const inp=miniBlankInp();g.auto(s,inp);const t0=performance.now();s.t+=1/60;g.step(s,1/60,inp);g.view(s,performance.now());PAINT.frame(1/60);cpu.push(performance.now()-t0);n=0;PAINT.render();calls.push(n)}}
+                  gl.drawElements=de;gl.drawArrays=da;cpu.sort((a,b)=>a-b);closeMini();await __L.open();return {cpu50:cpu[90],cpu90:cpu[162],calls:Math.max(...calls)}})()""")
+                self.add(G, "leap_cpu_budget", perf["cpu90"] < 8, f"step+view+toolkit over all three stages: median {perf['cpu50']:.2f} ms, 90th {perf['cpu90']:.2f} ms (line 8 ms)")
+                self.add(G, "leap_draw_calls", perf["calls"] <= 60, f"most draw calls in one frame: {perf['calls']} (line 60)")
+            if shotdir:
+                os.makedirs(shotdir, exist_ok=True)
+                for st in (0, 1, 2):
+                    await pg.evaluate(f"(()=>{{stopMiniLoop();miniPlay(false);const s=__L.mk({st});MS.s=s;s.d=.5;for(let i=0;i<30;i++){{s.t+=.05;MINI.leap.view(s,0);PAINT.frame(.05)}}PAINT.render()}})()")
+                    await pg.screenshot(path=os.path.join(shotdir, f"leap{tag}_stage{st+1}.png"))
+                await pg.evaluate("(async()=>{closeMini();await __L.open()})()")
+            r = await pg.evaluate(AUTO)
+            ok = r["mode"] == "result" and set(r["stages"]) >= {0, 1, 2} and (r["fl"] or 0) >= 1 and not stacks
+            self.add(G, "paint_suite_leap" + tag, ok, f"auto plays to the result card: mode {r['mode']}, stages {sorted(r['stages'])} (started at s {r['ts']}, ended {r['t']} s), lanterns {r['fl']}, counts {r['counts']}; page errors {stacks[:1] or 'none'}")
+            self.add(G, "stage_artifacts_leap" + tag, all(r["found"]), f"stage I, II, III gave kierkegaard:0..2 = {r['found']}")
+            if rm:
+                r["dz"] = await pg.evaluate("(()=>{const s=__L.mk(0);MS.s=s;s.d=.8;MINI.leap.view(s,0);const a=s.V.dz.alpha;s.t+=.3;MINI.leap.view(s,0);return Math.min(a,s.V.dz.alpha)})()")
+                r["dmax"] = 0.8
+                self.add(G, "reduce_motion_leap", r["rot"] == 0 and r["sh"] == 0 and r["dz"] > 0 and r["plate"] == 1,
+                         f"under Reduce Motion: largest view tilt {r['rot']} (want 0), shake {r['sh']} (want 0), the violet vignette shows dizziness (alpha {r['dz']:.2f}, d up to {r['dmax']:.2f}), plate shown as a still {r['plate']}")
+            elif tag == "":
+                self.add(G, "leap_sway", r["rot"] > 0 and r["rot"] <= 0.035 + 1e-6, f"dizziness tilts the view at most 2 degrees: largest {r['rot']:.4f} rad (line 0.0349)")
+            if shotdir and tag == "":
+                await pg.screenshot(path=os.path.join(shotdir, "leap_result.png"))
+            await ctx.close()
+        # the rules, on fresh states (no rendering)
+        ctx, pg, errs = await self.page(b)
+        await pg.evaluate(self.LEAP_JS); await pg.evaluate("P.f={}"); await pg.evaluate(OPEN)
+        r = await pg.evaluate("""(()=>{const L=__L,o={};stopMiniLoop();
+          /* 1. outside the gold never advances; inside always does; any tap on the last leap */
+          o.out=[];o.ing=[];for(const st of [0,1,2]){const gz=[.30,.24,.20][st];for(const b of [0,.1,.5-gz/2-.03,.5+gz/2+.03,.95]){const s=L.mk(st);s.lastTap=-9;L.setBead(s,b);L.tap(s);L.settle(s);o.out.push(s.ci===0&&s.shorts===1)}
+            for(const b of [.5,.5-gz/2+.01,.5+gz/2-.01]){const s=L.mk(st);s.lastTap=-9;L.setBead(s,b);L.tap(s);L.settle(s);o.ing.push(s.ci===1&&s.shorts===0)}}
+          {const s=L.mk(2);for(let i=0;i<5;i++){L.setBead(s,.5);s.lastTap=-9;L.tap(s);L.settle(s)}o.lastMode=s.lastMode&&s.ci===5;const sh=s.shorts;
+            L.run(s,1.2);L.setBead(s,0);s.lastTap=s.t-.1;L.tap(s);let r=null;for(let i=0;i<200&&r!=='win';i++)r=L.step(s);o.last={ci:s.ci,won:r==='win',shorts:s.shorts-sh,gold:+s.goldK.toFixed(2)}}
+          /* 2. mash guard: a 2nd tap within .25 s is a short even in the gold */
+          {const s=L.mk(0);s.lastTap=-9;L.setBead(s,.1);L.tap(s);L.settle(s);s.q=.5;s.lastTap=s.t-.1;L.tap(s);L.settle(s);o.mash={ci:s.ci,shorts:s.shorts}}
+          /* 3. dizziness: none in the grace time, then .25/s; the bead speeds up */
+          {const s=L.mk(0);L.run(s,1.4);const d0=s.d;L.run(s,2);const d1=s.d;const q0=s.q;L.run(s,1);const sp=s.q-q0;o.dizzy={d0,d1:+d1.toFixed(2),speed:+(sp*1.4).toFixed(2),want:+(1+.6*s.d).toFixed(2)}}
+          /* 4. waver (brief: each change of lean after the first adds .3) */
+          {const s=L.mk(1);L.key(s,'lTap');const a={w:s.waver,d:+s.d.toFixed(2)};L.key(s,'rTap');const b2={w:s.waver,d:+s.d.toFixed(2)};L.key(s,'lTap');const c={w:s.waver,d:+s.d.toFixed(2)};L.key(s,'lTap');
+            const sl=L.mk(1);const i1=miniBlankInp();i1.down={x:180,y:300};i1.drag={x:193,y:300,dx:13,dy:0};L.step(sl,i1);const i2=miniBlankInp();i2.down={x:170,y:300};i2.drag={x:170,y:300,dx:-26,dy:0};L.step(sl,i2);
+            o.waver={first:a,second:b2,third:c,same:s.waver,slide:{lean:sl.lean,waver:sl.waver}}}
+          /* 5. either side completes Stage II */
+          o.sides=[-1,1].map(v=>{const s=L.mk(1);s.autoLean=v;let ch=[];for(let i=0;i<3000&&s.st===1;i++){const inp=miniBlankInp();MINI.leap.auto(s,inp);ch=s.ch.slice(1);L.step(s,inp);if(s.st===1){ch=s.ch.slice(1);MINI.leap.view(s,0);PAINT.frame(.05)}}return {st:s.st,ch,downs:s.downs}}); /* view + frame: the camera moves as in play, so the shelf is where the player sees it */
+          /* 6. Stage I: the crowd nudges you if you wait on the 3rd ledge; leaping first avoids it */
+          {const s=L.mk(0);for(let i=0;i<2;i++){L.setBead(s,.5);s.lastTap=-9;L.tap(s);L.settle(s)}L.run(s,4.5);const n1=s.nudges;const s2=L.mk(0);for(let i=0;i<2;i++){L.setBead(s2,.5);s2.lastTap=-9;L.tap(s2);L.settle(s2)}
+            let came=false;for(let i=0;i<200&&!came;i++){L.step(s2);came=!!s2.crowd}L.setBead(s2,.5);s2.lastTap=-9;L.tap(s2);L.settle(s2);L.run(s2,1);const e=L.mk(0);L.run(e,8);o.nudge={waited:n1,leapt:s2.nudges,ci:s2.ci,ledge1:e.nudges}}
+          /* 7. Stage II: B or a tap on the shelf steps down (downs++); a gold leap goes back up to the same ledge */
+          {const s=L.mk(1);L.key(s,'bTap');L.settle(s);const a={shelf:s.onShelf,downs:s.downs};const dd=s.d;L.run(s,4);const dz=s.d;L.setBead(s,.5);s.lastTap=-9;L.tap(s);L.settle(s);
+            const s2=L.mk(1);PAINT.cam.y=PAINT.cam.ty=520;const sy=s2.shelfY-(520-390);L.tap(s2,180,sy);L.settle(s2);o.shelf={a,noDizzy:dz===dd,back:{shelf:s.onShelf,ci:s.ci,downs:s.downs},tapShelf:{shelf:s2.onShelf,downs:s2.downs}}}
+          /* 8. Stage III: a stack sinks 12 units after 1.5 s and never drops you; the bell tolls every 4 s and adds .2 dizziness */
+          {const s=L.mk(2);const y0=s.w.y;L.run(s,1.4);const y1=s.w.y;L.run(s,.8);const y2=s.w.y;const s3=L.mk(2);s3.bellT=3.9;s3.d=0;s3.onT=-9;L.run(s3,.15);o.sea={y0,y1,y2,tolls:s3.tolls,d:+s3.d.toFixed(2),gust:!!s3.gust}}
+          startMiniLoop();return o})()""")
+        out_ok, in_ok = all(r["out"]), all(r["ing"])
+        lt = r["last"]
+        self.add(G, "rules_leap", out_ok and in_ok and r["lastMode"] and lt["ci"] == 6 and lt["won"] and lt["shorts"] == 0 and lt["gold"] == 0,
+                 f"a tap outside the gold never advanced ({sum(r['out'])}/{len(r['out'])} hops back) and in the gold always did ({sum(r['ing'])}/{len(r['ing'])}) in all three stages; on the last leap the gold faded ({lt['gold']}) and a tap at the end of the arc landed on the headland ({lt['ci']}) and won ({lt['won']})")
+        self.add(G, "leap_mash_guard", r["mash"]["ci"] == 0 and r["mash"]["shorts"] == 2, f"a gold tap 0.1 s after a tap is a short: ledge {r['mash']['ci']}, shorts {r['mash']['shorts']} (want 0, 2)")
+        dz = r["dizzy"]
+        self.add(G, "leap_dizziness", dz["d0"] == 0 and abs(dz["d1"] - 0.475) < 0.06 and abs(dz["speed"] - dz["want"]) < 0.12, f"no dizziness in the 1.5 s grace ({dz['d0']}), then .25/s ({dz['d1']} after 3.4 s, want about .48); bead speed x{dz['speed']} (want x{dz['want']})")
+        wv = r["waver"]
+        self.add(G, "leap_waver", wv["first"]["w"] == 0 and wv["first"]["d"] == 0 and wv["second"]["w"] == 1 and abs(wv["second"]["d"] - 0.3) < .01 and wv["third"]["w"] == 2 and abs(wv["third"]["d"] - 0.6) < .01 and wv["same"] == 2 and wv["slide"] == {"lean": -1, "waver": 1},
+                 f"first lean free {wv['first']}; change 2 {wv['second']}; change 3 {wv['third']}; the same side again {wv['same']} (no change); a 13-unit slide then a slide back: {wv['slide']}")
+        sd = r["sides"]
+        self.add(G, "leap_either_side", all(x["st"] == 2 for x in sd) and sd[0]["ch"] == [-1] * 5 and sd[1]["ch"] == [1] * 5, f"always left: {sd[0]}; always right: {sd[1]} (both reach Stage III)")
+        nd = r["nudge"]
+        self.add(G, "leap_nudge", nd["waited"] >= 1 and nd["leapt"] == 0 and nd["ci"] == 3 and nd["ledge1"] == 0, f"waiting on ledge 3 brought {nd['waited']} nudge(s); leaping while the figure came in: {nd['leapt']} nudges, now on ledge {nd['ci']+1}; waiting on ledge 1: {nd['ledge1']}")
+        sf = r["shelf"]
+        self.add(G, "leap_shelf", sf["a"] == {"shelf": True, "downs": 1} and sf["noDizzy"] and sf["back"] == {"shelf": False, "ci": 0, "downs": 1} and sf["tapShelf"] == {"shelf": True, "downs": 1},
+                 f"B steps down {sf['a']}; no dizziness on the shelf {sf['noDizzy']}; a gold leap returns to the same ledge {sf['back']}; a tap on the shelf steps down {sf['tapShelf']}")
+        se = r["sea"]
+        self.add(G, "leap_sea", se["y1"] == se["y0"] and abs(se["y2"] - se["y0"] - 12) < .01 and se["tolls"] == 1 and abs(se["d"] - 0.2) < .01 and se["gust"],
+                 f"stack top y {se['y0']} -> {se['y1']} at 1.4 s -> {se['y2']} after 2.2 s (sinks 12, you stay on it); bell tolls {se['tolls']}, dizziness {se['d']} (want .2), gust {se['gust']}")
+        # Walk on: each stage's artifact and walk line, then the next stage
+        w = await pg.evaluate("""(async()=>{P.f={};closeMini();await __L.open();miniPlay(false);const o=[];for(let k=0;k<3;k++){MS.sess.tries=2;const c=canWalk();miniWalk();
+            o.push({can:c,mode:MS.mode,line:(document.querySelector('#mCard').innerText.includes(MINI.leap.walk[k])),head:document.querySelector('#mCard').innerText.includes(ARTI.kierkegaard.items[k].n),f:!!P.f['kierkegaard:'+k]});
+            if(k<2){miniContinue();o[k].after={mode:MS.mode,st:MS.s.st}}}
+          closeMini();P.f={'kierkegaard:0':1};await __L.open();const ws={st:MS.s.st,practice:MS.practice};closeMini();return {o,ws}})()""")
+        oo = w["o"]
+        self.add(G, "leap_walk_on", all(x["can"] and x["mode"] == "walked" and x["line"] and x["head"] and x["f"] for x in oo) and oo[0]["after"] == {"mode": "play", "st": 1} and oo[1]["after"] == {"mode": "play", "st": 2},
+                 f"Walk on in each stage gives its artifact with its own walk line: {[{k: v for k, v in x.items() if k != 'after'} for x in oo]}; Continue opens the next stage {[x.get('after') for x in oo[:2]]}")
+        self.add(G, "leap_world_start", w["ws"] == {"st": 1, "practice": 1}, f"with the ring found, the game opens at Stage II as practice: {w['ws']}")
+        # mashing: random taps for 60 s earn no 2nd or 3rd lantern and do not break the game
+        m = await pg.evaluate("""(async()=>{await __L.open();stopMiniLoop();const s=__L.mk(0);let seed=11;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};let res=null,err=null;
+          try{for(let i=0;i<1200&&res!=='win';i++){const inp=miniBlankInp();if(rnd()<.6){const tp={x:rnd()*360,y:rnd()*780};inp.taps=[tp];inp.tap=tp;inp.ups=[tp]}inp.aTap=rnd()<.2;inp.bTap=rnd()<.05;if(rnd()<.1)inp.dx=rnd()<.5?-1:1;s.t+=.05;res=MINI.leap.step(s,.05,inp)}}catch(e){err=String(e)}
+          const fl=MINI.leap.rate(s);startMiniLoop();return {fl,st:s.st,ci:s.ci,won:res==='win',err,shorts:s.shorts,downs:s.downs,waver:s.waver}})()""")
+        self.add(G, "no_mash_leap", m["fl"] == 1 and not m["err"], f"60 s of random taps: lantern {m['fl']} (want 1), shorts {m['shorts']}, downs {m['downs']}, waver {m['waver']}, reached stage {m['st']+1} ledge {m['ci']+1}, error {m['err'] or 'none'}")
+        rt = await pg.evaluate("(()=>{const g=MINI.leap,f=o=>g.rate(Object.assign({shorts:0,nudges:0,downs:0,waver:0},o));return [f({}),f({shorts:1,waver:1}),f({shorts:2}),f({nudges:1}),f({shorts:4,downs:1}),f({shorts:5}),f({downs:2})]})()")
+        self.add(G, "leap_lanterns", rt == [3, 3, 2, 2, 2, 1, 1], f"rate for clean / 1 short + 1 waver / 2 shorts / 1 nudge / 4 shorts + 1 down / 5 shorts / 2 downs = {rt} (want 3,3,2,2,2,1,1)")
+        self.add(G, "leap_no_errors", not errs, f"page errors in the rules run: {errs[:2] or 'none'}")
+        await ctx.close()
 
     async def p40(self, b): await self.land_group(b, "p40")
     async def p41(self, b): await self.land_group(b, "p41")
@@ -2617,6 +2759,8 @@ return out})()""")
         same = {}
         for k, t, sp in rows: same.setdefault(t, []).append(k)
         same = {k: [x for x in g if x != k] for g in same.values() if len(g) > 1 for k in g}
+        # Plan 6: a painted game's text is in its own file (loaded when it opens); load those files first so their lines are checked too
+        await pg.evaluate("(async()=>{const ids=Object.keys(MINI).filter(i=>MINI[i].engine==='paint'&&!MINI[i].ready&&!MINI[i].hidden);if(!ids.length)return 0;await paintBoot();for(const id of ids)await paintScript('mini/g/'+id+'.js');return ids.length})()")
         r = await pg.evaluate("""(SAME)=>{const hit=new Set(),bad=[];let n=0;
           const chk=(t,who,want)=>{if(t==null)return;n++;const f=VO.find(t,who);if(f)hit.add(f);if(want&&VOICE_MAP[want]&&f!==want)bad.push(want+' got '+f)};
           for(const id in TALK){const T=TALK[id];(T.intro||[]).forEach((x,i)=>chk(x,id,`talk.${id}.intro.${i}`));
@@ -2624,7 +2768,7 @@ return out})()""")
             chk(T.reflect,id,`talk.${id}.reflect`);chk(T.bye,id,`talk.${id}.bye`);chk(T.back,id,`talk.${id}.back`);
             if(ARTI[id])chk(ARTI[id].hint,id,`talk.${id}.hint`);AFFIRM.forEach((a,i)=>chk(a,id,`talk.${id}.affirm.${i}`))}
           for(const id in MINI){const g=MINI[id];(g.setup||[]).forEach((x,i)=>chk(x,g.who,`mini.${id}.setup.${i}`));(g.lines||[]).forEach((x,i)=>x&&chk(x,g.who,`mini.${id}.stage${i}`));
-            chk(g.win,g.who,`mini.${id}.win`);chk(g.walk,g.who,`mini.${id}.walk`);chk(g.again,g.who,`mini.${id}.again`)}
+            chk(g.win,g.who,`mini.${id}.win`);(Array.isArray(g.walk)?g.walk:[g.walk]).forEach((x,i)=>chk(x,g.who,i?null:`mini.${id}.walk`)); /* Plan 6: walk:[s1,s2,s3]; only s1 has a clip until Phase 55V */chk(g.again,g.who,`mini.${id}.again`)}
           ENDING_TEXT.forEach((x,i)=>chk(x,'narrator',`story.end.${i}`));
           for(const L in LEVEL_DEFS){const D=LEVEL_DEFS[L],B=D.bossTalk;if(!B)continue;(B.intro||[]).forEach(x=>chk(x));(B.hit||[]).forEach(x=>chk(x));chk(B.miss);chk(B.bye);
             (D.challenges||[]).forEach(c=>{chk(c.taunt);chk(c.w)})}
@@ -3268,7 +3412,7 @@ return out})(""" + ("true" if blobs else "false") + ")")
 
     async def addendum(self, b):
         ctx, pg, errs = await self.page(b)
-        r = await pg.evaluate("""(()=>{const ids=Object.keys(MINI),bad=ids.filter(id=>!MINI[id].nofl&&!(Array.isArray(MINI[id].fl)&&MINI[id].fl.length===3&&typeof MINI[id].rate==='function'));
+        r = await pg.evaluate("""(()=>{const ids=Object.keys(MINI),bad=ids.filter(id=>!(MINI[id].engine==='paint'&&!MINI[id].ready)&&!MINI[id].nofl&&!(Array.isArray(MINI[id].fl)&&MINI[id].fl.length===3&&typeof MINI[id].rate==='function'));
           return {ids,bad}})()""")
         self.add("addendum", "lanterns_defined", r["ids"] and not r["bad"], f"{len(r['ids'])} game(s); without 3 lantern levels and a rate(): {r['bad'] or 'none'}")
         r = await pg.evaluate("""(()=>{__kitEnter('l1');delete P.f['camus:1'];P.g={};const a=arts.find(x=>x.id==='camus'&&x.i===1);startMini('sisyphus',{art:a});miniAct('mbegin');
@@ -3311,7 +3455,7 @@ return out})(""" + ("true" if blobs else "false") + ")")
         res = {}
         for rm in (True, False):
             ctx, pg, errs = await self.page(b, reduced=rm)
-            r = await pg.evaluate("""(()=>{__kitEnter('l1');const out={};for(const id of Object.keys(MINI)){const g=MINI[id];if(typeof g.bloom!=='function'){out[id]='no bloom';continue}
+            r = await pg.evaluate("""(()=>{__kitEnter('l1');const out={};for(const id of Object.keys(MINI)){const g=MINI[id];if(g.engine==='paint')continue; /* Plan 6: painted games open async; their bloom is tested in p49+ */if(typeof g.bloom!=='function'){out[id]='no bloom';continue}
               try{startMini(id);miniAct('mbegin');miniWin();out[id]=RM.matches?(MS.mode==='result'&&MS.bk===1?'still':'mode '+MS.mode+' k '+MS.bk):(MS.mode==='bloom'?'plays':'mode '+MS.mode);miniDraw();closeMini()}catch(e){out[id]='error '+e}}return out})()""")
             res[rm] = (r, errs[:])
             await ctx.close()
@@ -3694,7 +3838,7 @@ return out})(""" + ("true" if blobs else "false") + ")")
                 self.add("info", "dump_world", None, f"Level I world saved to {self.args.dump_world}")
             core = [self.check_data, self.check_balance, self.check_map, self.check_play,
                     self.check_reveal_text, self.check_layout_se, self.check_builtin_art]
-            phases = {"p0": self.p0, "p1": self.p1, "p2": self.p2, "p3": self.p3, "p4": self.p4, "p5": self.p5, "p6": self.p6, "p7": self.p7, "p9": self.p9, "p11": self.p11, "p13": self.p13, "p15": self.p15, "p16": self.p16, "p18": self.p18, "p19": self.p19, "p20": self.p20, "p21": self.p21, "p22": self.p22, "p23": self.p23, "p24": self.p24, "p25": self.p25, "p26": self.p26, "p28": self.p28, "addendum": self.addendum, "p29": self.p29, "p30": self.p30, "p31": self.p31, "p32": self.p32, "p33": self.p33, "p34": self.p34, "p35": self.p35, "p36": self.p36, "p38": self.p38, "p39": self.p39, "p40": self.p40, "p41": self.p41, "p42": self.p42, "p43": self.p43, "p44": self.p44, "p45": self.p45, "p47": self.p47}
+            phases = {"p0": self.p0, "p1": self.p1, "p2": self.p2, "p3": self.p3, "p4": self.p4, "p5": self.p5, "p6": self.p6, "p7": self.p7, "p9": self.p9, "p11": self.p11, "p13": self.p13, "p15": self.p15, "p16": self.p16, "p18": self.p18, "p19": self.p19, "p20": self.p20, "p21": self.p21, "p22": self.p22, "p23": self.p23, "p24": self.p24, "p25": self.p25, "p26": self.p26, "p28": self.p28, "addendum": self.addendum, "p29": self.p29, "p30": self.p30, "p31": self.p31, "p32": self.p32, "p33": self.p33, "p34": self.p34, "p35": self.p35, "p36": self.p36, "p38": self.p38, "p39": self.p39, "p40": self.p40, "p41": self.p41, "p42": self.p42, "p43": self.p43, "p44": self.p44, "p45": self.p45, "p47": self.p47, "p49": self.p49}
             for fn in core:
                 if want and fn.__name__.replace("check_", "") not in want and "core" not in want:
                     continue

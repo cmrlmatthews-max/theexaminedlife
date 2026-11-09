@@ -512,6 +512,27 @@ def _save(im, path, q=86):
     else:
         im.save(path, optimize=True)
 
+def gdom_key(inp, out, hi=110.0, lo=35.0, soft_fx=False, trim=False):
+    """Phase 49B (from the Phase 49A gkey.py): green-dominance key for #00FF00 art. alpha from g - max(r, b) (opaque <= lo, clear >= hi),
+    then unmix the key colour from partial pixels and despill. Dark plum and slate paint stays opaque (the auto key thinned it).
+    soft_fx also sets g = min(g, (r + b) / 2) for soft effects (fog, wisps, splashes)."""
+    from PIL import ImageFilter
+    a = np.asarray(Image.open(inp).convert("RGB")).astype(np.float32)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    al = np.clip((hi - (g - np.maximum(r, b))) / (hi - lo), 0, 1)
+    fg = a.copy(); part = (al > 0) & (al < 1); K = np.array([0, 255, 0], np.float32)
+    fg[part] = np.clip((a[part] - (1 - al[part, None]) * K) / np.maximum(al[part, None], .15), 0, 255)
+    m = np.maximum(fg[..., 0], fg[..., 2]); fg[..., 1] = np.minimum(fg[..., 1], m + 12)
+    if soft_fx:
+        fg[..., 1] = np.minimum(fg[..., 1], (fg[..., 0] + fg[..., 2]) / 2)
+    A = np.asarray(Image.fromarray((al * 255).astype(np.uint8)).filter(ImageFilter.MedianFilter(3)))
+    im = Image.fromarray(np.dstack([fg.astype(np.uint8), A]), "RGBA")
+    if trim and im.getbbox():
+        im = im.crop(im.getbbox())
+    _save(im, out) if "_save" in globals() else im.save(out, **({"quality": 86} if out.lower().endswith(".webp") else {}))
+    return {"mode": "gdom", "size": list(im.size), "opaque": float((A >= 250).mean()), "clear": float((A == 0).mean())}
+
+
 def key_image(inp, out, color="auto", tol=None, soft=60.0, despill=False, trim=False, island=None):
     arr = np.array(Image.open(inp).convert("RGB"))
     rgba, info = key_rgba(arr, color, tol, soft, despill, island, trim)
@@ -815,7 +836,9 @@ HELP = {
            "  --tol N   noise floor, RGB distance from the local background (default: measured from the border)\n"
            "  --soft N  widest matte ramp in RGB distance (default 60; the ramp narrows by itself on low-contrast edges)\n"
            "  --despill wider spill-suppression band (4px instead of 2px) around edges\n"
-           "  --trim    crop to the visible pixels      --island N  drop blobs smaller than N px (default ~2e-5 of the image)",
+           "  --trim    crop to the visible pixels      --island N  drop blobs smaller than N px (default ~2e-5 of the image)\n"
+           "  key IN OUT --mode gdom [--hi 110] [--lo 35] [--soft-fx] [--trim]: green-dominance key for #00FF00 art (Phase 49A method;\n"
+           "  keeps dark plum and slate paint opaque). --soft-fx also pulls green out of soft effects (fog, wisps, splashes).",
     "layers": "python3 mini-art-tools.py layers IN_DIR OUT_DIR [--size 1080x2340]\n"
               "  For each <n>-<name>.png|jpg|webp: key (auto; opaque painted backdrops are left alone), cover-crop to the size keeping the\n"
               "  bottom anchored, save <n>-<name>.webp (q86, alpha kept) and write layers.json [{key,file,w,h,depth}].",
@@ -1060,6 +1083,8 @@ if __name__ == "__main__":
         json.dump(pack(items, a[2]), open(a[3], "w"))
     elif cmd == "grid":
         grid(a[1], a[2])
+    elif cmd == "key" and opt("--mode", "") == "gdom":
+        print(json.dumps(gdom_key(a[1], a[2], hi=opt("--hi", 110.0, float), lo=opt("--lo", 35.0, float), soft_fx="--soft-fx" in a, trim="--trim" in a)))
     elif cmd == "key":
         print(json.dumps(key_image(a[1], a[2], color=opt("--color", "auto"), tol=opt("--tol", None, float), soft=opt("--soft", 60.0, float),
                                    despill="--despill" in a, trim="--trim" in a, island=opt("--island", None, int))))
